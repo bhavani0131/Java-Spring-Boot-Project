@@ -21,10 +21,10 @@ COPY --from=builder /app/target/*.jar app.jar
 # ENV SERVER_PORT=8084
 
 # Expose the port (optional)
-EXPOSE 81
+EXPOSE 8084
 
 # Start the application
-CMD ["java", "-jar", "app.jar"]
+CMD ["java", "-jar", "app.jar", "--server.port=8084"]
 
 
 
