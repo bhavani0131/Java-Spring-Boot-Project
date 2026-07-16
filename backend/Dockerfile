@@ -24,7 +24,7 @@ COPY --from=builder /app/target/*.jar app.jar
 EXPOSE 8084
 
 # Start the application
-CMD ["java", "-jar", "app.jar", "--server.port=8084"]
+CMD ["java", "-jar", "app.jar"]
 
 
 
