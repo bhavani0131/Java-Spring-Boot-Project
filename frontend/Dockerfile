@@ -8,7 +8,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . /app
 
 # Set environment variable
-ENV API_URL=http://My-ALB-445984990.us-east-1.elb.amazonaws.com:81
+ENV API_URL=http://172.31.84.136:81
 
 EXPOSE 8501
 
