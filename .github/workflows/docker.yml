@@ -121,9 +121,9 @@ jobs:
               --name backend \
               --network app-network \
               -p 8084:8084 \
-              -e SPRING_DATASOURCE_URL="jdbc:mysql://alisha-db.c2jcgmu24q8a.us-east-1.rds.amazonaws.com:3306/datastore?createDatabaseIfNotExist=true" \
+              -e SPRING_DATASOURCE_URL="jdbc:mysql://bhavani.ckr448w20c2m.us-east-1.rds.amazonaws.com:3306/datastore?createDatabaseIfNotExist=true" \
               -e SPRING_DATASOURCE_USERNAME="admin" \
-              -e SPRING_DATASOURCE_PASSWORD="alisha123" \
+              -e SPRING_DATASOURCE_PASSWORD="bhavani999" \
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
 
             echo "Starting Frontend Container..."
