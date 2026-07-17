@@ -1,0 +1,139 @@
+name: Build, Push to ECR and Deploy Docker
+
+on:
+  # push:
+  #   branches:
+  #     - main
+  workflow_dispatch:
+
+env:
+  AWS_REGION: ${{ secrets.AWS_REGION }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+  BACKEND_REPO: backend
+  FRONTEND_REPO: frontend
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # Configure AWS Credentials
+      - name: Configure AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      # Login to Amazon ECR
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Create ECR repositories if they don't exist
+      - name: Create ECR Repositories
+        run: |
+          aws ecr describe-repositories --repository-names $BACKEND_REPO >/dev/null 2>&1 || \
+          aws ecr create-repository --repository-name $BACKEND_REPO
+
+          aws ecr describe-repositories --repository-names $FRONTEND_REPO >/dev/null 2>&1 || \
+          aws ecr create-repository --repository-name $FRONTEND_REPO
+
+      # Build Backend Image
+      - name: Build Backend Image
+        run: |
+          docker build -t backend:latest ./backend
+
+      # Build Frontend Image
+      - name: Build Frontend Image
+        run: |
+          docker build -t frontend:latest ./frontend
+
+      # Tag Docker Images
+      - name: Tag Docker Images
+        run: |
+          docker tag backend:latest \
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:latest
+
+          docker tag frontend:latest \
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
+
+      # Push Images to ECR
+      - name: Push Images to Amazon ECR
+        run: |
+          docker push \
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$BACKEND_REPO:latest
+
+          docker push \
+          $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
+
+      # Deploy on EC2 (Updated to use EC2_KEY)
+      - name: Deploy to EC2
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            set -e
+
+            echo "Logging into Amazon ECR..."
+
+            aws ecr get-login-password \
+              --region ${{ secrets.AWS_REGION }} | \
+              sudo docker login \
+              --username AWS \
+              --password-stdin \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
+
+            echo "Pulling latest images..."
+
+            sudo docker pull \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
+
+            sudo docker pull \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
+
+            echo "Stopping old containers..."
+
+            sudo docker stop backend || true
+            sudo docker rm backend || true
+
+            sudo docker stop frontend || true
+            sudo docker rm frontend || true
+
+            echo "Starting Backend Container..."
+
+            sudo docker run -d \
+              --name backend \
+              -p 8084:8084 \
+              -e SPRING_DATASOURCE_URL="jdbc:mysql://alisha-db.c2jcgmu24q8a.us-east-1.rds.amazonaws.com:3306/datastore?createDatabaseIfNotExist=true" \
+              -e SPRING_DATASOURCE_USERNAME="admin" \
+              -e SPRING_DATASOURCE_PASSWORD="alisha123" \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
+
+            echo "Starting Frontend Container..."
+
+            sudo docker run -d \
+              --name frontend \
+              -p 8501:8501 \
+              ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
+
+            echo "Pruning unused Docker assets..."
+            sudo docker image prune -f
+
+            echo "Deployment completed successfully."
+
+      # Verify Deployment (Updated to use EC2_KEY)
+      - name: Verify Running Containers
+        uses: appleboy/ssh-action@v1.1.0
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            sudo docker ps
+            sudo docker images
