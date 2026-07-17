@@ -1,56 +1,21 @@
-name: Frontend to EC2
+name: Frontend - Scan & Deploy
 
 on:
   # push:
   #   branches:
   #     - main
-
   workflow_dispatch:
 
 jobs:
-  deploy:
+  frontend-deploy:
+    name: Scan & Deploy Frontend
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      ######################################################
-      # SonarQube Scan
-      ######################################################
-
-      - name: Set up Java
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v5
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        with:
-          args: >
-            -Dsonar.projectKey=frontend
-            -Dsonar.projectName=frontend
-            -Dsonar.sources=frontend
-
-      ######################################################
-      # Quality Gate
-      ######################################################
-
-      - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
-        timeout-minutes: 10
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      ######################################################
-      # Deploy
-      ######################################################
-
-      - name: Deploy via SSH
+      - name: Deploy Frontend via SSH
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -63,7 +28,7 @@ jobs:
             REPO_NAME=Java-springboot-project
             REPO_URL=https://github.com/CloudTechDevOps/Java-springboot-project.git
 
-            echo "🚀 Starting deployment..."
+            echo "🚀 Starting frontend deployment..."
 
             mkdir -p $APP_DIR
             cd $APP_DIR
@@ -117,43 +82,4 @@ jobs:
             sudo systemctl enable frontend
             sudo systemctl restart frontend
 
-            echo "Deployment completed."
-
-      ######################################################
-      # Email Notification
-      ######################################################
-
-      - name: 📧 Send Deployment Report
-        if: success() || failure()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: AI Deployment Report - ${{ github.repository }}
-          to: ${{ secrets.EMAIL_TO }}
-          from: ${{ secrets.EMAIL_USERNAME }}
-
-          body: |
-            🚀 AI Deployment Report
-
-            Repository : ${{ github.repository }}
-            Workflow   : ${{ github.workflow }}
-            Branch     : ${{ github.ref_name }}
-            Commit     : ${{ github.sha }}
-
-            Status     : ${{ job.status }}
-
-            Triggered By : ${{ github.actor }}
-            Run Number   : ${{ github.run_number }}
-
-            SonarQube Analysis : Completed
-            Quality Gate       : Passed
-
-            Deployment Target  : EC2
-            Frontend URL       : http://${{ secrets.EC2_HOST }}:8501
-
-            Regards,
-            GitHub Actions
+            echo "Frontend deployment completed."
