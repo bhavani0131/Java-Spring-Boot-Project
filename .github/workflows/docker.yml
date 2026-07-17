@@ -15,17 +15,20 @@ env:
 jobs:
   deploy:
     runs-on: ubuntu-latest
+    # Added permissions required for OIDC authentication
+    permissions:
+      id-token: write
+      contents: read
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      # Configure AWS Credentials
-      - name: Configure AWS Credentials
+      # Configure AWS Credentials via OIDC (No Access Keys used)
+      - name: Configure AWS Credentials via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          role-to-assume: arn:aws:iam::917246193838:role/EC2-ECR-Pull-Role
           aws-region: ${{ env.AWS_REGION }}
 
       # Login to Amazon ECR
@@ -70,7 +73,7 @@ jobs:
           docker push \
           $AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com/$FRONTEND_REPO:latest
 
-      # Deploy on EC2 (Updated to use EC2_KEY)
+      # Deploy on EC2
       - name: Deploy to EC2
         uses: appleboy/ssh-action@v1.1.0
         with:
@@ -80,8 +83,7 @@ jobs:
           script: |
             set -e
 
-            echo "Logging into Amazon ECR..."
-
+            echo "Logging into Amazon ECR using Instance Profile Permissions..."
             aws ecr get-login-password \
               --region ${{ secrets.AWS_REGION }} | \
               sudo docker login \
@@ -90,7 +92,6 @@ jobs:
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com
 
             echo "Pulling latest images..."
-
             sudo docker pull \
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
 
@@ -98,7 +99,6 @@ jobs:
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
 
             echo "Stopping old containers..."
-
             sudo docker stop backend || true
             sudo docker rm backend || true
 
@@ -106,7 +106,6 @@ jobs:
             sudo docker rm frontend || true
 
             echo "Starting Backend Container..."
-
             sudo docker run -d \
               --name backend \
               -p 8084:8084 \
@@ -116,7 +115,6 @@ jobs:
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/backend:latest
 
             echo "Starting Frontend Container..."
-
             sudo docker run -d \
               --name frontend \
               -p 8501:8501 \
@@ -127,7 +125,7 @@ jobs:
 
             echo "Deployment completed successfully."
 
-      # Verify Deployment (Updated to use EC2_KEY)
+      # Verify Deployment
       - name: Verify Running Containers
         uses: appleboy/ssh-action@v1.1.0
         with:
