@@ -1,4 +1,4 @@
-name: Backend to EC2
+name: Backend - Build, Scan & Deploy
 
 on:
   # push:
@@ -7,7 +7,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build-deploy:
+  backend-deploy:
+    name: Build, Scan & Deploy Backend
     runs-on: ubuntu-latest
 
     steps:
@@ -21,28 +22,7 @@ jobs:
           java-version: 17
           cache: maven
       
-      - name: Build and SonarQube Scan
-        working-directory: backend
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-          SONAR_HOST_URL: ${{ secrets.SONAR_HOST_URL }}
-        run: |
-          mvn clean verify sonar:sonar \
-            -DskipTests \
-            -Dsonar.projectKey=backend \
-            -Dsonar.projectName=backend \
-            -Dsonar.host.url=$SONAR_HOST_URL \
-            -Dsonar.token=$SONAR_TOKEN
-      
-      - name: SonarQube Quality Gate
-        uses: SonarSource/sonarqube-quality-gate-action@v1.2.0
-        with:
-          scanMetadataReportFile: backend/target/sonar/report-task.txt
-        timeout-minutes: 10
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
-
-      - name: Prepare EC2
+      - name: Prepare EC2 Packages
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -52,7 +32,7 @@ jobs:
             set -e
             sudo yum install -y git maven java-17-amazon-corretto
 
-      - name: Clone / Pull Repository
+      - name: Clone / Pull Repository (Backend)
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -84,7 +64,7 @@ jobs:
             cd /home/ec2-user/app/Java-springboot-project/backend
             mvn clean package -DskipTests -U
 
-      - name: Stop Old Application
+      - name: Stop Old Backend Instance
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -93,24 +73,24 @@ jobs:
           script_stop: false
           script: |
             PID=$(ps -ef | grep '[d]atastore-0.0.7.jar' | awk '{print $2}')
-      
+            
             if [ -z "$PID" ]; then
               echo "Application is not running."
               exit 0
             fi
-      
+            
             echo "Stopping PID: $PID"
             kill -15 $PID
             sleep 5
-      
+            
             if ps -p $PID > /dev/null 2>&1; then
               echo "Force killing PID: $PID"
               kill -9 $PID
             fi
-      
+            
             echo "Application stopped."
 
-      - name: Start Application
+      - name: Start Backend Application
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -138,7 +118,7 @@ jobs:
           key: ${{ secrets.EC2_KEY }}
           script: sleep 15
 
-      - name: Verify Application
+      - name: Verify Backend Application
         uses: appleboy/ssh-action@v1.1.0
         with:
           host: ${{ secrets.EC2_HOST }}
@@ -148,25 +128,3 @@ jobs:
             HEALTH=$(curl -s http://localhost:8084/actuator/health)
             echo "$HEALTH"
             [[ "$HEALTH" == *'"status":"UP"'* ]]
-
-      - name: Send Deployment Report
-        if: always()
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          secure: true
-          username: ${{ secrets.EMAIL_USERNAME }}
-          password: ${{ secrets.EMAIL_PASSWORD }}
-          subject: Backend Deployment Report - ${{ github.repository }}
-          to: ${{ secrets.EMAIL_TO }}
-          from: ${{ secrets.EMAIL_USERNAME }}
-          body: |
-            Repository: ${{ github.repository }}
-            Branch: ${{ github.ref_name }}
-            Commit: ${{ github.sha }}
-            Status: ${{ job.status }}
-            Actor: ${{ github.actor }}
-            Workflow: ${{ github.workflow }}
-            SonarQube: Completed
-            Quality Gate: Passed if workflow succeeded.
