@@ -113,9 +113,13 @@ jobs:
             sudo docker stop frontend || true
             sudo docker rm frontend || true
 
+            echo "Creating Docker network if it doesn't exist..."
+            sudo docker network create app-network || true
+
             echo "Starting Backend Container..."
             sudo docker run -d \
               --name backend \
+              --network app-network \
               -p 8084:8084 \
               -e SPRING_DATASOURCE_URL="jdbc:mysql://alisha-db.c2jcgmu24q8a.us-east-1.rds.amazonaws.com:3306/datastore?createDatabaseIfNotExist=true" \
               -e SPRING_DATASOURCE_USERNAME="admin" \
@@ -125,7 +129,9 @@ jobs:
             echo "Starting Frontend Container..."
             sudo docker run -d \
               --name frontend \
+              --network app-network \
               -p 8501:8501 \
+              -e API_URL="http://backend:8084" \
               ${{ secrets.AWS_ACCOUNT_ID }}.dkr.ecr.${{ secrets.AWS_REGION }}.amazonaws.com/frontend:latest
 
             echo "Pruning unused Docker assets..."
